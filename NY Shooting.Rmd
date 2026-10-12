@@ -1,0 +1,102 @@
+---
+title: "NYPD Shooting Incident Data Analysis"
+author: "Monica Silva"
+date: "2026-10-11"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+## NYPD Shooting Incident Data (Historic)
+
+
+This is part of the final assignment for `Data Science as Field` course.
+
+The goal is to import, tidy and analyze the NYPD Shooting Incident dataset obtained. It includes every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. Data retrieved from <https://catalog.data.gov/dataset/archived_nypd-shooting-incident-data-historic>. 
+
+This segment of code imports the data in a reproducible manner.
+
+```{r get_data}
+csv_url <- "https://data.cityofnewyork.us/api/v3/views/833y-fsy8/export.csv?accessType=DOWNLOAD"
+df <- read_csv(csv_url)
+df
+```
+
+
+## Tidying and Transforming Data
+
+
+Selecting the columns and transforming into date/factors. This prepares the dataset for following visualizations.
+
+```{r analyzing_data}
+df2 <- df %>% select(c(OCCUR_DATE,OCCUR_TIME,BORO,STATISTICAL_MURDER_FLAG,VIC_SEX,VIC_AGE_GROUP)) %>% mutate(OCCUR_DATE = mdy(OCCUR_DATE), BORO=factor(BORO), VIC_SEX=factor(VIC_SEX), VIC_AGE_GROUP=factor(VIC_AGE_GROUP))
+df2$MURDER = as.integer(df2$STATISTICAL_MURDER_FLAG)
+df2$OCCUR_TIME <- as.character(df2$OCCUR_TIME)
+df2 %>% select(-c(STATISTICAL_MURDER_FLAG))
+summary(df2)
+
+```
+
+## Visualizations and Analysis
+
+Here's a plot showing the number of shootings and murder per day. 
+
+```{r visualization1}
+df3 <- df2 %>% group_by(OCCUR_DATE) %>% summarize(Count=n())
+df4 <- df2 %>% group_by(OCCUR_DATE) %>% summarize(NUMBER_MURDERS=sum(MURDER))
+df5 <- inner_join(df3,df4, by=c("OCCUR_DATE"))
+ colnames(df5) <- c("Date","Shootings", "Murders")
+df5 %>% ggplot(aes(x=Date, y=Shootings)) + geom_line(aes(color="Shootings")) + geom_point(aes(color="Shootings"))+geom_line(aes(y=Murders,color="Murders")) + geom_point(aes(y=Murders,color="Murders"))
+
+```
+
+
+Since the previous plot didn't give much information, here's a new plot to see cumulative shooting and murders over the years at log scale.
+
+```{r visualization2}
+df5 %>% arrange(Date) %>% mutate(Cumulative_Shootings = cumsum(Shootings), Cumulative_Murder =cumsum(Murders)) %>% ggplot(aes(x=Date, y=Cumulative_Shootings)) + geom_line(aes(color="Cumulative_Shootings")) + geom_point(aes(color="Cumulative_Shootings"))+geom_line(aes(y=Cumulative_Murder,color="Cumulative_Murder")) + geom_point(aes(y=Cumulative_Murder,color="Cumulative_Murder"))+scale_y_log10()
+
+```
+
+
+
+It seems like both line grow at the same speed. Is that really true? Here's the same plot without log scale.
+
+```{r visualization3}
+df5 %>% arrange(Date) %>% mutate(Cumulative_Shootings = cumsum(Shootings), Cumulative_Murder =cumsum(Murders)) %>% ggplot(aes(x=Date, y=Cumulative_Shootings)) + geom_line(aes(color="Cumulative_Shootings")) + geom_point(aes(color="Cumulative_Shootings"))+geom_line(aes(y=Cumulative_Murder,color="Cumulative_Murder")) + geom_point(aes(y=Cumulative_Murder,color="Cumulative_Murder"))
+
+```
+
+
+Here we can see they both grow over time but slightly different rate. We can also see more clearly a slightly increase of both shooting and murders starting 2020 compared to previous plots.
+
+## Simple Modeling data
+
+```{r modeling_data}
+df6 <- df5 %>% arrange(Date) %>% mutate(Cumulative_Shootings = cumsum(Shootings), Cumulative_Murder =cumsum(Murders))
+mod <- lm(Cumulative_Murder ~ Cumulative_Shootings, data=df6)
+summary(mod)
+```
+
+
+
+```{r predicting}
+df6 <- df6 %>% mutate(pred=predict(mod))
+df6 %>% ggplot() + geom_point(aes(x=Cumulative_Shootings, y=Cumulative_Murder), color="blue") + geom_point(aes(x=Cumulative_Shootings, y=pred), color="red")
+```
+
+We can see the model (red) gets a very good prediction on for cumulative murders based on cumulative shootings
+
+
+## Bias Identification
+
+The source of bias for this dataset might involve data collection. There could have been incidents that were under reported, or how a murder is defined. Is it reported by police as murder, or is it classified as such after a criminal case's trial is completed and sentenced?
+
+As for personal bias, I'm personally against the right of owning guns by civilians and unnecessary use of force and firepower by the police. I tried to write this report in a object way, avoiding pointing fingers at culprits and ignoring racial, age and sex of both victims and perpetrators.
+
+
